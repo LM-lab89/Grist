@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Calendrier Grist Officiel</title>
+  
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.11/locales/fr.global.min.js"></script>
+
+  <style>
+    body { margin: 10px; font-family: sans-serif; background-color: #ffffff; }
+    #calendar { height: 95vh; }
+    
+    /* Couleurs de tes statuts Grist */
+    .fc-event { cursor: pointer; padding: 3px; font-size: 0.9em; border: none !important; color: white !important; }
+    .status-Réalisée { background-color: #10b981 !important; }
+    .status-En-cours { background-color: #f59e0b !important; }
+    .status-Annulée { background-color: #ef4444 !important; }
+    .status-Non-débutée { background-color: #64748b !important; }
+    .status-default { background-color: #3b82f6 !important; }
+  </style>
+</head>
+<body>
+
+  <div id="calendar"></div>
+
+  <script>
+    let calendar;
+
+    // Initialisation du calendrier au chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+      const calendarEl = document.getElementById('calendar');
+      calendar = new FullCalendar.Calendar(calendarEl, {
+        locale: 'fr',
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'multiMonthYear,dayGridMonth,timeGridWeek'
+        },
+        views: {
+          multiMonthYear: { buttonText: 'Année' },
+          dayGridMonth: { buttonText: 'Mois' },
+          timeGridWeek: { buttonText: 'Semaine' }
+        },
+        firstDay: 1,
+        eventClick: function(info) {
+          // Si on clique sur une action, Grist sélectionne la ligne correspondante
+          grist.setSelectedRows([info.event.id]);
+        }
+      });
+      calendar.render();
+    });
+
+    // Enregistrement du widget auprès de l'API Grist officielle
+    grist.ready({
+      requiredAccess: 'readtable',
+      columns: [
+        { name: "Action", title: "Nom de l'action" },
+        { name: "Debut", title: "Date de début de l'action" },
+        { name: "Fin", title: "Date de fin de l'action", optional: true },
+        { name: "Statut", title: "Statut", optional: true }
+      ]
+    });
+
+    // Réception des lignes de données envoyées par Grist
+    grist.onRecords((records) => {
+      if (!calendar) return;
+
+      const events = records
+        .filter(r => r.Debut) // On filtre les lignes qui possèdent une date de début
+        .map(r => {
+          const startDate = new Date(r.Debut);
+          if (isNaN(startDate.getTime())) return null;
+
+          let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
+          
+          // FullCalendar s'arrête la veille du jour de fin, on ajoute +1 jour pour l'inclusivité
+          endDate.setDate(endDate.getDate() + 1);
+
+          // Remplacement des espaces par des tirets pour le CSS (ex: "En cours" -> "En-cours")
+          const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
+
+          // Format strict exigé par le calendrier : AAAA-MM-JJ
+          const startIso = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-' + String(startDate.getDate()).padStart(2, '0');
+          const endIso = endDate.getFullYear() + '-' + String(endDate.getMonth() + 1).padStart(2, '0') + '-' + String(endDate.getDate()).padStart(2, '0');
+
+          return {
+            id: r.id,
+            title: r.Action || "Sans nom",
+            start: startIso,
+            end: endIso,
+            className: `status-${cleanStatus}`,
+            allDay: true
+          };
+        })
+        .filter(e => e !== null);
+
+      // Rafraîchissement visuel du calendrier
+      calendar.removeAllEvents();
+      calendar.addEventSource(events);
+    });
+  </script>
+</body>
+</html>
