@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Calendrier Grist Officiel</title>
+  <title>Calendrier Grist Fix</title>
   
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.min.css" rel="stylesheet">
@@ -12,8 +12,6 @@
   <style>
     body { margin: 10px; font-family: sans-serif; background-color: #ffffff; }
     #calendar { height: 95vh; }
-    
-    /* Styles des badges */
     .fc-event { cursor: pointer; padding: 3px; font-size: 0.9em; border: none !important; color: white !important; }
     .status-Réalisée { background-color: #10b981 !important; }
     .status-En-cours { background-color: #f59e0b !important; }
@@ -29,7 +27,6 @@
   <script>
     let calendar;
 
-    // 1. On attend d'abord que la structure de la page soit prête pour charger le calendrier vide
     document.addEventListener('DOMContentLoaded', function() {
       const calendarEl = document.getElementById('calendar');
       calendar = new FullCalendar.Calendar(calendarEl, {
@@ -52,13 +49,13 @@
       });
       calendar.render();
       
-      // 2. Sécurité : On initialise Grist SEULEMENT après le chargement complet de la page pour éviter la ReferenceError
+      // Lancement de Grist
       initGrist();
     });
 
     function initGrist() {
+      // Configuration sans aucun niveau d'accès requis pour éviter le bug de l'instance
       grist.ready({
-        requiredAccess: 'none',
         columns: [
           { name: "Action", title: "Nom de l'action" },
           { name: "Debut", title: "Date de début de l'action" },
@@ -67,7 +64,6 @@
         ]
       });
 
-      // 3. Écouteur de données stable
       grist.onRecords((records) => {
         if (!calendar) return;
 
@@ -78,7 +74,7 @@
             if (isNaN(startDate.getTime())) return null;
 
             let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
-            endDate.setDate(endDate.getDate() + 1); // Inclusion du dernier jour complet
+            endDate.setDate(endDate.getDate() + 1);
 
             const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
 
