@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Grist Calendar</title>
+  
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.11/locales/fr.global.min.js"></script>
+
+  <style>
+    body { margin: 10px; font-family: sans-serif; background-color: #ffffff; }
+    #calendar { height: 95vh; }
+    
+    /* Styles et couleurs pour tes statuts de l'image Grist */
+    .fc-event { cursor: pointer; padding: 3px; font-size: 0.9em; border: none !important; color: white !important; }
+    .status-Réalisée { background-color: #10b981 !important; }
+    .status-En-cours { background-color: #f59e0b !important; }
+    .status-Annulée { background-color: #ef4444 !important; }
+    .status-Non-débutée { background-color: #64748b !important; }
+    .status-default { background-color: #3b82f6 !important; }
+  </style>
+</head>
+<body>
+
+  <div id="calendar"></div>
+
+  <script>
+    let calendar;
+
+    // 1. Initialisation du calendrier
+    document.addEventListener('DOMContentLoaded', function() {
+      const calendarEl = document.getElementById('calendar');
+      calendar = new FullCalendar.Calendar(calendarEl, {
+        locale: 'fr',
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'multiMonthYear,dayGridMonth,timeGridWeek'
+        },
+        views: {
+          multiMonthYear: { buttonText: 'Année' },
+          dayGridMonth: { buttonText: 'Mois' },
+          timeGridWeek: { buttonText: 'Semaine' }
+        },
+        firstDay: 1,
+        eventClick: function(info) {
+          grist.setSelectedRows([info.event.id]);
+        }
+      });
+      calendar.render();
+    });
+
+    // 2. Déclaration des colonnes attendues (Doit matcher avec ton Grist)
+    grist.ready({
+      requiredAccess: 'readtable', // On repasse sur l'officiel
+      columns: [
+        { name: "Action", title: "Nom de l'action" },
+        { name: "Debut", title: "Date de début de l'action" },
+        { name: "Fin", title: "Date de fin de l'action", optional: true },
+        { name: "Statut", title: "Statut", optional: true }
+      ]
+    });
+
+    // 3. Réception des données Grist
+    grist.onRecords((records) => {
+      if (!calendar) return;
+
+      const events = records
+        .filter(r => r.Debut) // On n'affiche que les lignes qui ont une date de début
+        .map(r => {
+          // Grist envoie les objets Date natifs ou des chaînes ISO. On les standardise.
+          const startDate = new Date(r.Debut);
+          if (isNaN(startDate.getTime())) return null;
+
+          let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
+          
+          // FullCalendar exclut le jour de fin des événements AllDay, on rajoute 1 jour
+          endDate.setDate(endDate.getDate() + 1);
+
+          // Nettoyage de la chaîne du statut pour correspondre aux classes CSS
+          const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
+
+          // Conversion en chaînes AAAA-MM-JJ propres
+          const startIso = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-' + String(startDate.getDate()).padStart(2, '0');
+          const endIso = endDate.getFullYear() + '-' + String(endDate.getMonth() + 1).padStart(2, '0') + '-' + String(endDate.getDate()).padStart(2, '0');
+
+          return {
+            id: r.id,
+            title: r.Action || "Sans nom",
+            start: startIso,
+            end: endIso,
+            className: `status-${cleanStatus}`,
+            allDay: true
+          };
+        })
+        .filter(e => e !== null);
+
+      calendar.removeAllEvents();
+      calendar.addEventSource(events);
+    });
+  </script>
+</body>
+</html>
