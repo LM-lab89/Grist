@@ -13,7 +13,7 @@
     body { margin: 10px; font-family: sans-serif; background-color: #ffffff; }
     #calendar { height: 95vh; }
     
-    /* Couleurs de tes statuts Grist */
+    /* Styles des badges */
     .fc-event { cursor: pointer; padding: 3px; font-size: 0.9em; border: none !important; color: white !important; }
     .status-Réalisée { background-color: #10b981 !important; }
     .status-En-cours { background-color: #f59e0b !important; }
@@ -29,7 +29,7 @@
   <script>
     let calendar;
 
-    // Initialisation du calendrier au chargement de la page
+    // 1. On attend d'abord que la structure de la page soit prête pour charger le calendrier vide
     document.addEventListener('DOMContentLoaded', function() {
       const calendarEl = document.getElementById('calendar');
       calendar = new FullCalendar.Calendar(calendarEl, {
@@ -47,61 +47,59 @@
         },
         firstDay: 1,
         eventClick: function(info) {
-          // Si on clique sur une action, Grist sélectionne la ligne correspondante
           grist.setSelectedRows([info.event.id]);
         }
       });
       calendar.render();
+      
+      // 2. Sécurité : On initialise Grist SEULEMENT après le chargement complet de la page pour éviter la ReferenceError
+      initGrist();
     });
 
-    // Enregistrement du widget auprès de l'API Grist officielle
-    grist.ready({
-      requiredAccess: 'readtable',
-      columns: [
-        { name: "Action", title: "Nom de l'action" },
-        { name: "Debut", title: "Date de début de l'action" },
-        { name: "Fin", title: "Date de fin de l'action", optional: true },
-        { name: "Statut", title: "Statut", optional: true }
-      ]
-    });
+    function initGrist() {
+      grist.ready({
+        requiredAccess: 'readtable',
+        columns: [
+          { name: "Action", title: "Nom de l'action" },
+          { name: "Debut", title: "Date de début de l'action" },
+          { name: "Fin", title: "Date de fin de l'action", optional: true },
+          { name: "Statut", title: "Statut", optional: true }
+        ]
+      });
 
-    // Réception des lignes de données envoyées par Grist
-    grist.onRecords((records) => {
-      if (!calendar) return;
+      // 3. Écouteur de données stable
+      grist.onRecords((records) => {
+        if (!calendar) return;
 
-      const events = records
-        .filter(r => r.Debut) // On filtre les lignes qui possèdent une date de début
-        .map(r => {
-          const startDate = new Date(r.Debut);
-          if (isNaN(startDate.getTime())) return null;
+        const events = records
+          .filter(r => r.Debut)
+          .map(r => {
+            const startDate = new Date(r.Debut);
+            if (isNaN(startDate.getTime())) return null;
 
-          let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
-          
-          // FullCalendar s'arrête la veille du jour de fin, on ajoute +1 jour pour l'inclusivité
-          endDate.setDate(endDate.getDate() + 1);
+            let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
+            endDate.setDate(endDate.getDate() + 1); // Inclusion du dernier jour complet
 
-          // Remplacement des espaces par des tirets pour le CSS (ex: "En cours" -> "En-cours")
-          const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
+            const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
 
-          // Format strict exigé par le calendrier : AAAA-MM-JJ
-          const startIso = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-' + String(startDate.getDate()).padStart(2, '0');
-          const endIso = endDate.getFullYear() + '-' + String(endDate.getMonth() + 1).padStart(2, '0') + '-' + String(endDate.getDate()).padStart(2, '0');
+            const startIso = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-' + String(startDate.getDate()).padStart(2, '0');
+            const endIso = endDate.getFullYear() + '-' + String(endDate.getMonth() + 1).padStart(2, '0') + '-' + String(endDate.getDate()).padStart(2, '0');
 
-          return {
-            id: r.id,
-            title: r.Action || "Sans nom",
-            start: startIso,
-            end: endIso,
-            className: `status-${cleanStatus}`,
-            allDay: true
-          };
-        })
-        .filter(e => e !== null);
+            return {
+              id: r.id,
+              title: r.Action || "Sans nom",
+              start: startIso,
+              end: endIso,
+              className: `status-${cleanStatus}`,
+              allDay: true
+            };
+          })
+          .filter(e => e !== null);
 
-      // Rafraîchissement visuel du calendrier
-      calendar.removeAllEvents();
-      calendar.addEventSource(events);
-    });
+        calendar.removeAllEvents();
+        calendar.addEventSource(events);
+      });
+    }
   </script>
 </body>
 </html>
