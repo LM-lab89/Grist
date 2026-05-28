@@ -2,17 +2,31 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Calendrier Grist Fix</title>
+  <title>Calendrier Grist Intégré Fix</title>
   
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.11/locales/fr.global.min.js"></script>
 
   <style>
-    body { margin: 10px; font-family: sans-serif; background-color: #ffffff; }
-    #calendar { height: 95vh; }
-    .fc-event { cursor: pointer; padding: 3px; font-size: 0.9em; border: none !important; color: white !important; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 15px; background-color: #ffffff; color: #334155; }
+    .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #f1f5f9; }
+    .cal-title { font-size: 1.6rem; font-weight: 700; color: #1e293b; text-transform: capitalize; }
+    .btn { background-color: #ffffff; border: 1px solid #cbd5e1; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; color: #334155; transition: all 0.2s; }
+    .btn:hover { background-color: #f8fafc; border-color: #94a3b8; }
+    .btn-group { display: flex; gap: 6px; }
+    
+    /* Grille Principale du Mois */
+    .grid-month { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .day-header { background-color: #f8fafc; font-weight: 700; text-align: center; padding: 12px 8px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .day-cell { min-height: 120px; padding: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background-color: #ffffff; position: relative; display: flex; flex-direction: column; gap: 4px; }
+    .day-cell.other-month { background-color: #f8fafc; color: #cbd5e1; }
+    .day-num { font-weight: 700; font-size: 12px; color: #475569; margin-bottom: 4px; }
+    .day-cell.other-month .day-num { color: #94a3b8; }
+    
+    /* Événements et Badges en fonction des Statuts */
+    .evt-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 1.3; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff; background-color: #3b82f6; border-left: 4px solid rgba(0,0,0,0.2); box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: transform 0.1s; }
+    .evt-badge:hover { transform: translateY(-1px); filter: brightness(0.95); }
+    
+    /* Correspondance exacte avec les couleurs de tes statuts Grist */
     .status-Réalisée { background-color: #10b981 !important; }
     .status-En-cours { background-color: #f59e0b !important; }
     .status-Annulée { background-color: #ef4444 !important; }
@@ -22,39 +36,111 @@
 </head>
 <body>
 
-  <div id="calendar"></div>
+  <div class="cal-header">
+    <div class="btn-group">
+      <button class="btn" id="btnPrev">◀ Mois Précédent</button>
+      <button class="btn" id="btnToday">Aujourd'hui</button>
+      <button class="btn" id="btnNext">Mois Suivant ▶</button>
+    </div>
+    <div class="cal-title" id="calTitle">Mars 2026</div>
+    <div style="width: 150px;"></div> </div>
+
+  <div id="calContainer"></div>
 
   <script>
-    let calendar;
+    // Initialisation par défaut sur Mars 2026 pour cibler tes données de test
+    let currentDate = new Date(2026, 2, 1); 
+    let globalRecords = [];
 
-    document.addEventListener('DOMContentLoaded', function() {
-      const calendarEl = document.getElementById('calendar');
-      calendar = new FullCalendar.Calendar(calendarEl, {
-        locale: 'fr',
-        initialView: 'dayGridMonth',
-        headerToolbar: {
-          left: 'prev,next today',
-          center: 'title',
-          right: 'multiMonthYear,dayGridMonth,timeGridWeek'
-        },
-        views: {
-          multiMonthYear: { buttonText: 'Année' },
-          dayGridMonth: { buttonText: 'Mois' },
-          timeGridWeek: { buttonText: 'Semaine' }
-        },
-        firstDay: 1,
-        eventClick: function(info) {
-          grist.setSelectedRows([info.event.id]);
-        }
-      });
-      calendar.render();
+    const monthsLabels = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    const daysLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+    // Écouteurs des boutons
+    document.getElementById('btnPrev').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); render(); });
+    document.getElementById('btnNext').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); render(); });
+    document.getElementById('btnToday').addEventListener('click', () => { currentDate = new Date(); render(); });
+
+    function render() {
+      const container = document.getElementById('calContainer');
+      const title = document.getElementById('calTitle');
+      container.innerHTML = '';
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      title.innerText = `${monthsLabels[month]} ${year}`;
+
+      const grid = document.createElement('div');
+      grid.className = 'grid-month';
       
-      // Lancement de Grist
-      initGrist();
-    });
+      // Jours de la semaine
+      daysLabels.forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'day-header';
+        h.innerText = d;
+        grid.appendChild(h);
+      });
 
-    function initGrist() {
-      // Configuration sans aucun niveau d'accès requis pour éviter le bug de l'instance
+      // Calcul du décalage du premier jour du mois (Lundi = 0)
+      let firstDay = new Date(year, month, 1).getDay();
+      let startOffset = firstDay === 0 ? 6 : firstDay - 1;
+      
+      let dateCursor = new Date(year, month, 1 - startOffset);
+
+      // Génération de la grille (6 semaines fixes)
+      for (let i = 0; i < 42; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        if (dateCursor.getMonth() !== month) cell.classList.add('other-month');
+
+        const num = document.createElement('span');
+        num.className = 'day-num';
+        num.innerText = dateCursor.getDate();
+        cell.appendChild(num);
+
+        // Correspondance temporelle au format local (sans fuseau horaire bloquant)
+        const currentYear = dateCursor.getFullYear();
+        const currentMonth = dateCursor.getMonth();
+        const currentDay = dateCursor.getDate();
+        
+        const cellTime = new Date(currentYear, currentMonth, currentDay).getTime();
+
+        globalRecords.forEach(r => {
+          if (!r.Debut) return;
+          
+          // Conversion saine des dates Grist
+          const dStart = new Date(r.Debut);
+          const start = new Date(dStart.getFullYear(), dStart.getMonth(), dStart.getDate()).getTime();
+          
+          const dEnd = r.Fin ? new Date(r.Fin) : dStart;
+          const end = new Date(dEnd.getFullYear(), dEnd.getMonth(), dEnd.getDate()).getTime();
+
+          // Si la cellule du calendrier est comprise entre le début et la fin de l'action
+          if (cellTime >= start && cellTime <= end) {
+            const badge = document.createElement('div');
+            const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
+            badge.className = `evt-badge status-${cleanStatus}`;
+            badge.innerText = r.Action || "Sans nom";
+            badge.title = `${r.Action || 'Sans nom'} (${r.Statut || 'Aucun statut'})`;
+            
+            // Clic synchrone : sélectionne la ligne dans Grist
+            badge.onclick = (e) => {
+              e.stopPropagation();
+              grist.setSelectedRows([r.id]);
+            };
+            
+            cell.appendChild(badge);
+          }
+        });
+
+        grid.appendChild(cell);
+        dateCursor.setDate(dateCursor.getDate() + 1);
+      }
+      container.appendChild(grid);
+    }
+
+    // Démarrage et liaison Grist sans demande d'accès restrictive (évite l'erreur readtable)
+    document.addEventListener('DOMContentLoaded', function() {
       grist.ready({
         columns: [
           { name: "Action", title: "Nom de l'action" },
@@ -65,37 +151,10 @@
       });
 
       grist.onRecords((records) => {
-        if (!calendar) return;
-
-        const events = records
-          .filter(r => r.Debut)
-          .map(r => {
-            const startDate = new Date(r.Debut);
-            if (isNaN(startDate.getTime())) return null;
-
-            let endDate = r.Fin ? new Date(r.Fin) : new Date(startDate);
-            endDate.setDate(endDate.getDate() + 1);
-
-            const cleanStatus = r.Statut ? r.Statut.replace(/\s+/g, '-') : 'default';
-
-            const startIso = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-' + String(startDate.getDate()).padStart(2, '0');
-            const endIso = endDate.getFullYear() + '-' + String(endDate.getMonth() + 1).padStart(2, '0') + '-' + String(endDate.getDate()).padStart(2, '0');
-
-            return {
-              id: r.id,
-              title: r.Action || "Sans nom",
-              start: startIso,
-              end: endIso,
-              className: `status-${cleanStatus}`,
-              allDay: true
-            };
-          })
-          .filter(e => e !== null);
-
-        calendar.removeAllEvents();
-        calendar.addEventSource(events);
+        globalRecords = records;
+        render();
       });
-    }
+    });
   </script>
 </body>
 </html>
